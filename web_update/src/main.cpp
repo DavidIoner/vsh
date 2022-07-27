@@ -1,17 +1,28 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266HTTPClient.h>
-// #include <ArduinoOTA.h>
 #include <pubSubCLient.h>
 #include <Updater.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <NTPClient.h>
 
 //Wifi----------------------
-const char* ssid     = "Orion*Fibra_David";
-const char* password = "ioner004";
+const char* ssid     = "WS-SP6";
+// WS-TISBC
+// WS-SP6
+const char* password = "s@30@ltr&f9ws";
+// s@30@ltr&f9wss
+// s@30@ltr&f9ws
+IPAddress local_IP(192, 168, 3, 254); 
+// Set your Gateway IP address
+IPAddress gateway(192, 168, 1, 254);
+
+IPAddress subnet(255, 255, 0, 0);
+IPAddress primaryDNS(8, 8, 8, 8);   //optional
+IPAddress secondaryDNS(8, 8, 4, 4); //optional  
 
 //MQTT Broker---------------
 const char *mqtt_broker = "52.67.193.122";
@@ -42,12 +53,18 @@ sensors_event_t a, g, temp;
 WiFiClient espClient;
 PubSubClient client(espClient);
 Adafruit_MPU6050 mpu;
+
 HTTPClient httpClient;
 HTTPClient apiClient;
 
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org");
+String formattedDate;
+String dayStamp;
+String timeStamp;
+
 String espId;
 
-uint32_t espFlashId = ESP.getFlashChipId();
 int totalLength;
 int currentLength = 0;
 String sensorId;
@@ -57,8 +74,14 @@ int API_PORT = 3000;
 const char* url = "http://storage.googleapis.com/sensor-version/downtime/";
 
 void setWifi(){
-  Serial.println();      
+  Serial.println();    
+
+  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
+    Serial.println("STA Failed to configure");
+  }else{Serial.println("configurou");}
   WiFi.begin(ssid, password); //Inicia WiFi 
+
+
   delay(500);
   Serial.print("Conectando"); 
   while (WiFi.status() != WL_CONNECTED) // Tentando conectar na Rede WiFi
@@ -72,14 +95,66 @@ void setWifi(){
   Serial.println(WiFi.localIP()); //Imprime o Endereço IP Local do ESP8266
 }
 
+void setTime(){
+// Initialize a NTPClient to get time
+  timeClient.begin();
+  // Set offset time in seconds to adjust for your timezone, for example:
+  // GMT +1 = 3600
+  // GMT +8 = 28800
+  // GMT -1 = -3600
+  // GMT 0 = 0
+  timeClient.setTimeOffset(3600);
+}
+
+void getTime(){
+
+  timeClient.forceUpdate();
+
+  // The formattedDate comes with the following format:
+  // 2018-05-28T16:00:13Z
+  // We need to extract date and time
+  formattedDate = timeClient.getFormattedTime();
+  Serial.println(formattedDate);
+
+  // Extract date
+  int splitT = formattedDate.indexOf("T");
+  dayStamp = formattedDate.substring(0, splitT);
+  Serial.print("DATE: ");
+  Serial.println(dayStamp);
+  // Extract time
+  timeStamp = formattedDate.substring(splitT+1, formattedDate.length()-1);
+  Serial.print("HOUR: ");
+  Serial.println(timeStamp);
+}
+
 String router(String subroute){
   return API_SERVER + (String)":" + API_PORT + subroute;
+}
+
+void APIlog(String msg){
+  String route = "/sensor-log";
+  StaticJsonDocument<1024> docAux;
+  JsonObject reading = docAux.to<JsonObject>();
+  String jsonAux;
+
+  reading["id"] = sensorId;
+  // reading["date"] = getCurrentDateTime();
+  reading["log"] = msg;
+
+  serializeJson(reading, jsonAux);
+
+  apiClient.begin(espClient , router(route));
+  apiClient.addHeader("Content-Type", "application/json");     
+
+  int res = apiClient.POST(jsonAux);
+  apiClient.end();
+  reading.clear();
 }
 
 void generateSensorId() {
   char espIdAux[12];
   snprintf(espIdAux, 12, "%X%X", (uint32_t)ESP.getFlashChipId(), (uint32_t)ESP.getChipId());
-  espId = espIdAux;
+  sensorId = espIdAux;
 }
 
 void updateFirmware(uint8_t *data, size_t len, String filename){
@@ -90,7 +165,7 @@ void updateFirmware(uint8_t *data, size_t len, String filename){
   // if current length of written firmware is not equal to total firmware size, repeat
   if(currentLength != totalLength) return;
   Update.end(true);
-  // APIlog((String)"Updated sucessfully from " + filename);
+  APIlog((String)"Updated sucessfully from " + filename);
   Serial.printf("\nUpdate Success, Total Size: %u\nRebooting in 3s...\n", currentLength);
   delay(3000);
   // Restart ESP32 to see changes 
@@ -115,6 +190,7 @@ void checkForUpdates() {
     statusCode = apiClient.GET();
   }
   if(statusCode != HTTP_CODE_OK) {
+
     // ESP.restart();
   }
   String filename = apiClient.getString();
@@ -178,8 +254,11 @@ void initMPU(){
     }
   }
   Serial.println("MPU6050 Found!");
-  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  // 2, 4, 8, 16
+  mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
+  // 250, 500, 1000, 2000
+  mpu.setGyroRange(MPU6050_RANGE_2000_DEG);
+  // 260, 184, 94, 44, 21, 10, 5
   mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
 }
 
@@ -235,7 +314,9 @@ void addToJSON() {
   reading["gyroZ"] = gyroZ;
 
   reading["engineState"] = engineState;
-
+  // time_t epochTime = timeClient.getEpochTime();
+  // Serial.println(epochTime);
+  // reading["time"] = epochTime;
 //  mqttQueue.add(reading);
   char jsonOut[300];
   serializeJson(docAux, jsonOut);
@@ -246,27 +327,26 @@ void addToJSON() {
 void printData() {
   
       /* Print out the values */
-      Serial.print("Acceleration X: ");
-      Serial.print(a.acceleration.x);
-      Serial.print(", Y: ");
-      Serial.print(a.acceleration.y);
-      Serial.print(", Z: ");
-      Serial.print(a.acceleration.z);
-      Serial.println(" m/s^2");
+      
+      // Serial.print(a.acceleration.x);
+      // Serial.println(" ");
+      // Serial.print(a.acceleration.y);
+      // Serial.println(" ");
+      // Serial.print(a.acceleration.z);
+      // Serial.println(" ");
     
-      Serial.print("Rotation X: ");
       Serial.print(g.gyro.x);
-      Serial.print(", Y: ");
+      Serial.print(" ");
       Serial.print(g.gyro.y);
-      Serial.print(", Z: ");
+      Serial.print(" ");
       Serial.print(g.gyro.z);
-      Serial.println(" rad/s");
+      Serial.println(" ");
     
-      Serial.print("Temperature: ");
-      Serial.print(temp.temperature);
-      Serial.println(" degC");
+      // Serial.print("Temperature: ");
+      // Serial.print(temp.temperature);
+      // Serial.println(" degC");
     
-      Serial.println("");
+      // Serial.println("");
 }
 
 bool connectMQTT() {
@@ -302,6 +382,7 @@ void setup() {
   Serial.begin(9600);
   // wifiConnectBegin( "espID" , "123456789" );
   setWifi();
+  setTime();
   generateSensorId();
   checkForUpdates();
   initMPU();
@@ -321,8 +402,14 @@ void loop() {
       pooling = millis();
         getReadings();
         defineState();
+        getTime();
         addToJSON();
         printData();
+        while (WiFi.status() != WL_CONNECTED) // Tentando conectar na Rede WiFi
+        {
+          delay(500);
+          Serial.print(".");
+        }
       }
     }
 }
