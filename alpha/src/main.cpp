@@ -11,23 +11,23 @@
 #include <ESPDateTime.h>
 
 //Wifi----------------------
-const char* ssid     = "WS-TISBC";
+const char* ssid     = "Orion*Fibra_David";
 // 
 // WS-TISBC
 // WS-SP6
-const char* password = "s@30@ltr&f9wss";
+const char* password = "ioner004";
 // s@30@ltr&f9wss
 // s@30@ltr&f9ws
-IPAddress local_IP(192, 168, 3, 254); 
+// IPAddress local_IP(192, 168, 3, 254); 
 // Set your Gateway IP address
-IPAddress gateway(192, 168, 1, 254);
+// IPAddress gateway(192, 168, 1, 254);
 
-IPAddress subnet(255, 255, 0, 0);
-IPAddress primaryDNS(8, 8, 8, 8);   //optional
-IPAddress secondaryDNS(8, 8, 4, 4); //optional  
+// IPAddress subnet(255, 255, 0, 0);
+// IPAddress primaryDNS(8, 8, 8, 8);   //optional
+// IPAddress secondaryDNS(8, 8, 4, 4); //optional  
 
 //MQTT Broker---------------
-const char *mqtt_broker = "52.67.193.122";
+const char *mqtt_broker = "177.71.187.19";
 const char *topic = "sensor.downtime";
 const char *mqtt_username = "david";
 const char *mqtt_password = "JZTeVT5C";
@@ -36,7 +36,7 @@ const int mqtt_port = 1883;
 //Variaveis-----------------
 bool mqttStatus = 0;
 //int leitura = 1/30 * 1000;
-int leitura = 500;
+int leitura = 133;
 bool engineState;
 int stateCount;
 float gyTotal;
@@ -45,10 +45,14 @@ float gyroX, gyroY, gyroZ;
 float accX, accY, accZ;
 float temperature;
 
+float gyroX_temp;
+float gyroY_temp;
+float gyroZ_temp;
+
 //desvio giroscopio---------
-float gyroXerror = 0.07;
+float gyroXerror = 0.05;
 float gyroYerror = 0.03;
-float gyroZerror = 0.02;
+float gyroZerror = 0.01;
 
 //tempo---------------------
 unsigned long lastMs = 0;
@@ -71,16 +75,16 @@ int totalLength;
 int currentLength = 0;
 String sensorId;
 int MAX_REQ_ATTEMPT = 5;
-String API_SERVER = "http://52.67.193.122";
+String API_SERVER = "http://177.71.187.19";
 int API_PORT = 3000;
 const char* url = "http://storage.googleapis.com/sensor-version/downtime/";
 
 void setWifi(){
   Serial.println();    
 
-  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
-    Serial.println("STA Failed to configure");
-  }else{Serial.println("configurou");}
+  // if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
+  //   Serial.println("STA Failed to configure");
+  // }else{Serial.println("configurou");}
   WiFi.begin(ssid, password); //Inicia WiFi 
 
 
@@ -105,7 +109,7 @@ void setupDateTime() {
   // DateTime.begin(15 * 1000);
   // from
   /** changed from 0.2.x **/
-  DateTime.setTimeZone("CST-8");
+  DateTime.setTimeZone("GMT-3");
   // this method config ntp and wait for time sync
   // default timeout is 10 seconds
   DateTime.begin(/* timeout param */);
@@ -161,8 +165,8 @@ void updateFirmware(uint8_t *data, size_t len, String filename){
 }
 
 void checkForUpdates() {
-  Serial.println(espId);
-  String route = "/check-update?id=" + espId + "&downtime=true";
+  Serial.println(sensorId);
+  String route = "/check-update?id=" + sensorId + "&downtime=true";
   Serial.println(route);
   Serial.println(router(route));
 
@@ -235,6 +239,12 @@ void checkForUpdates() {
 }
 
 void initMPU(){
+  // 2, 4, 8, 16
+  mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
+  // 250, 500, 1000, 2000
+  mpu.setGyroRange(MPU6050_RANGE_2000_DEG);
+  // 260, 184, 94, 44, 21, 10, 5
+  mpu.setFilterBandwidth(MPU6050_BAND_260_HZ);
   if (!mpu.begin()) {
     Serial.println("Failed to find MPU6050 chip");
     while (1) {
@@ -242,13 +252,9 @@ void initMPU(){
     }
   }
   Serial.println("MPU6050 Found!");
-  // 2, 4, 8, 16
-  mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
-  // 250, 500, 1000, 2000
-  mpu.setGyroRange(MPU6050_RANGE_2000_DEG);
-  // 260, 184, 94, 44, 21, 10, 5
-  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
 }
+
+
 
 void getReadings(){
   mpu.getEvent(&a, &g, &temp);
@@ -259,33 +265,33 @@ void getReadings(){
 
   temperature = temp.temperature;
 
-  gyroX = g.gyro.x;
-  gyroY = g.gyro.y;
-  gyroZ = g.gyro.z;
+  // gyroX = g.gyro.x;
+  // gyroY = g.gyro.y;
+  // gyroZ = g.gyro.z;
   
 
-  // float gyroX_temp = g.gyro.x;
-  // if(abs(gyroX_temp) > gyroXerror)  {
-  //   gyroX = g.gyro.x;
-  // }
+  gyroX_temp = g.gyro.x;
+  if(abs(gyroX_temp) >= gyroXerror)  {
+    gyroX = gyroX_temp - gyroXerror;
+  } else{gyroX = 0;}
   
-  // float gyroY_temp = g.gyro.y;
-  // if(abs(gyroY_temp) > gyroYerror) {
-  //   gyroY += gyroY_temp;
-  // }
+  gyroY_temp = g.gyro.y;
+  if(abs(gyroY_temp) >= gyroYerror) {
+    gyroY = gyroY_temp - gyroYerror;
+  } else{gyroY = 0;}
 
-  // float gyroZ_temp = g.gyro.z;
-  // if(abs(gyroZ_temp) > gyroZerror) {
-  //   gyroZ += gyroZ_temp;
-  // }
+  gyroZ_temp = g.gyro.z;
+  if(abs(gyroZ_temp) >= gyroZerror) {
+    gyroZ = gyroZ_temp - gyroZerror;
+  } else{gyroZ = 0;}
 }
 
 void defineState() {
   gyTotal = abs(gyroX) + abs(gyroY) + abs(gyroZ);
   if (gyTotal > 0) {
       stateCount ++;
-  } else {
-    stateCount = 0;
+  } else if (stateCount){
+    stateCount --;
     engineState = 0; 
   }
   if (stateCount > 4) { //quantidade de leituras para considerar o motor como ligado
@@ -296,15 +302,15 @@ void defineState() {
 void addToJSON() {
   StaticJsonDocument<300> docAux;
   JsonObject reading = docAux.to<JsonObject>();
-  reading["sensorId"] = sensorId;
-  reading["date"] = "12342";
-  reading["accX"] = accX;
-  reading["accY"] = accY;
-  reading["accZ"] = accZ;
+  reading["id"] = sensorId;
+  reading["t"] = DateTime.toISOString();
+  reading["a"] = accX;
+  reading["b"] = accY;
+  reading["c"] = accZ;
 
-  reading["gyroX"] = gyroX;
-  reading["gyroY"] = gyroY;
-  reading["gyroZ"] = gyroZ;
+  reading["x"] = gyroX;
+  reading["y"] = gyroY;
+  reading["z"] = gyroZ;
 
   reading["engineState"] = engineState;
 
@@ -342,6 +348,7 @@ void printData() {
 bool connectMQTT() {
   byte tentativa = 0;
   Serial.println("conectando ao broker");
+  client.setServer(mqtt_broker, mqtt_port);
 
   do {
     String client_id = "SENSOR01-";
@@ -374,9 +381,8 @@ void setup() {
   setWifi();
   setupDateTime();
   generateSensorId();
-  checkForUpdates();
+  // checkForUpdates();
   initMPU();
-  client.setServer(mqtt_broker, mqtt_port);
   //  client.setCallback(callback);
   mqttStatus = connectMQTT();
   if (mqttStatus == 0) {
@@ -392,11 +398,13 @@ void loop() {
   if (mqttStatus) {
     client.loop();
     if (millis() > pooling + leitura) {
-      pooling = millis();
+      pooling = millis(); 
         getReadings();
         defineState();
         addToJSON();
         printData();
+        // Serial.println(DateTime.toISOString());
+        // Serial.println(pooling);
 
         if (WiFi.status() != WL_CONNECTED){
           ESP.reset();

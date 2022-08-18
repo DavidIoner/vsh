@@ -71,30 +71,30 @@ void setup(void)
   mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
   mpu.setGyroRange(MPU6050_RANGE_500_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
-  setWifi();
+//  setWifi();
 
-  client.setServer(mqtt_broker, mqtt_port);
+//  client.setServer(mqtt_broker, mqtt_port);
 //  client.setCallback(callback);
-  mqttStatus = connectMQTT();
+//  mqttStatus = connectMQTT();
 }
 
 
 
 void loop() {
   static long long pooling = 0;
-  if (mqttStatus) {
-    client.loop();
+//  if (mqttStatus) {
+//    client.loop();
     if (millis() > pooling + leitura) {
       pooling = millis();
         getAccReadings();
         getGyroReadings();
-        defineState();
-        addToJSON();
+//        defineState();
+//        addToJSON();
         printData();
 
       }
     }
-}
+//}
 
 void callback(char *topic, byte * payload, unsigned int length);
 
@@ -166,27 +166,27 @@ String getTemperature(){
 void printData() {
   
       /* Print out the values */
-      Serial.print("Acceleration X: ");
-      Serial.print(a.acceleration.x);
-      Serial.print(", Y: ");
-      Serial.print(a.acceleration.y);
-      Serial.print(", Z: ");
-      Serial.print(a.acceleration.z);
-      Serial.println(" m/s^2");
+//      Serial.print("Acceleration X: ");
+//      Serial.print(a.acceleration.x);
+//      Serial.print(", Y: ");
+//      Serial.print(a.acceleration.y);
+//      Serial.print(", Z: ");
+//      Serial.print(a.acceleration.z);
+//      Serial.println(" m/s^2");
     
-      Serial.print("Rotation X: ");
+//      Serial.print(" ");
       Serial.print(g.gyro.x);
-      Serial.print(", Y: ");
+      Serial.print(" ");
       Serial.print(g.gyro.y);
-      Serial.print(", Z: ");
+      Serial.print(" ");
       Serial.print(g.gyro.z);
-      Serial.println(" rad/s");
+      Serial.println(" ");
     
-      Serial.print("Temperature: ");
-      Serial.print(temp.temperature);
-      Serial.println(" degC");
-    
-      Serial.println("");
+//      Serial.print("Temperature: ");
+//      Serial.print(temp.temperature);
+//      Serial.println(" degC");
+//    
+//      Serial.println("");
 }
 
 void defineState() {
