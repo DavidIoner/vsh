@@ -9,7 +9,7 @@
 #include <Adafruit_Sensor.h>
 #include <NTPClient.h>
 #include <ESPDateTime.h>
-#include <I2Cdev.h>
+
 
 //Wifi----------------------
 const char* ssid     = "Orion*Fibra_David";
@@ -36,6 +36,10 @@ const int mqtt_port = 1883;
 
 //Variaveis-----------------
 bool mqttStatus = 0;
+
+float vibration;
+float leituras = 0;
+float spectrum;
 //int leitura = 1/30 * 1000;
 bool engineState;
 int stateCount;
@@ -61,8 +65,7 @@ float gyroZerror = 0.01;
 unsigned long lastMs = 0;
 unsigned long ms = millis();
 
-int leitura = 133;
-static long long timer = 1000;
+static long long timer = 250;
 
 // static long long pooling = 0;
 // static long long pooling2 = 0;
@@ -111,17 +114,15 @@ void setWifi(){
 }
 
 void setupDateTime() {
-  DateTime.setServer("pool.ntp.org");
+
+  // DateTime.setServer("asia.pool.ntp.org");
   // DateTime.begin(15 * 1000);
   // from
   /** changed from 0.2.x **/
-  DateTime.setTimeZone("UTC");
+  DateTime.setTimeZone("UTC-0");
   // this method config ntp and wait for time sync
   // default timeout is 10 seconds
   DateTime.begin(/* timeout param */);
-  time_t currentTime;
-  DateTime.now(&currentTime);
-  Serial.println(currentTime);
   if (!DateTime.isTimeValid()) {
     Serial.println("Failed to get time from server.");
   }
@@ -308,33 +309,31 @@ void defineState() {
   } 
 }
 
-void vibration() {
+float toVibrationSpectrum(){
   gyMedia = 0;
   // 5 leituras
   
   getReadings();
   gyTotal = abs(gyroX) + abs(gyroY) + abs(gyroZ);
-  gyMedia += gyTotal/3;
+  gyMedia += gyTotal;
 
-  gyMediaTotal = gyMedia;
-
-
+  return gyMedia;
 }
+
 
 void addToJSON() {
   StaticJsonDocument<300> docAux;
   JsonObject reading = docAux.to<JsonObject>();
   reading["id"] = sensorId;
   reading["t"] = DateTime.toISOString();
-  reading["a"] = accX;
-  reading["b"] = accY;
-  reading["c"] = accZ;
+  reading["v"] = spectrum;
+  // reading["a"] = accX;
+  // reading["b"] = accY;
+  // reading["c"] = accZ;
 
-  reading["x"] = gyroX;
-  reading["y"] = gyroY;
-  reading["z"] = gyroZ;
-
-  reading["engineState"] = engineState;
+  // reading["x"] = gyroX;
+  // reading["y"] = gyroY;
+  // reading["z"] = gyroZ;
 
   char jsonOut[300];
   serializeJson(docAux, jsonOut);
@@ -417,20 +416,30 @@ void setup() {
 
 void loop() {
   static long long pooling = 0;
-  // static long long pooling2 = 0;
+  static long long pooling2 = 0;
+  
+  // Serial.println(pooling);
   if (mqttStatus) {
     client.loop();
     if (millis() > pooling + timer) {
       pooling = millis(); 
-        // getReadings();
-        // if (millis() > pooling2 + leitura) {
-        //   pooling2 = millis();
-        //   vibration();
-        // }
-        defineState();
+
+      // faz a leitura e retorna um float de vibracao
+      vibration += toVibrationSpectrum();
+      Serial.println(vibration);
+      leituras += 1;
+      if (millis() >= pooling2 + 1000){
+        pooling2 = millis();
+        // faz a media das leituras
+        spectrum = vibration/leituras;
         addToJSON();
-        printData();
-        // Serial.println(DateTime.toISOString());
+        vibration = 0;
+        leituras = 0;
+      }
+
+      
+
+      printData();
 
 
         if (WiFi.status() != WL_CONNECTED){
